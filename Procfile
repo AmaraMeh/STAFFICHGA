@@ -1,1 +1,1 @@
-web: python3 STAFF.py
+web: python3 main.py
