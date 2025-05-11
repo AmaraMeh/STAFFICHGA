@@ -8,8 +8,8 @@ from datetime import datetime
 
 # --- CONFIGURATION ---
 MOODLE_URL = "https://elearning.univ-bejaia.dz/course/view.php?id=18044"
-TELEGRAM_BOT_TOKEN = "7826891551:AAFHFSg-J5WM9A4Qv942zK24xTPAVJConDI"
-CHAT_ID = "-1002462776688"  # Updated to Life in Campus El-Kseur channel
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+CHAT_ID = os.environ.get("CHAT_ID")
 CHECK_INTERVAL = 60  # seconds
 STATE_FILE = "sent_today.txt"
 
@@ -17,7 +17,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "✅ Moodle bot is running!"
+    return "✅ Moodle bot is running with image support!"
 
 # Load IDs already sent today
 def load_sent_ids():
@@ -86,6 +86,18 @@ def send_to_telegram(title, content, date_affichage):
     response = requests.post(url, data=payload)
     print("📤 Message sent | Status:", response.status_code)
 
+# Send images to Telegram
+def send_images_to_telegram(images):
+    for img_url in images:
+        response = requests.post(
+            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto",
+            data={
+                "chat_id": CHAT_ID,
+                "photo": img_url,
+            }
+        )
+        print("🖼️  Image sent | Status:", response.status_code)
+
 # Extract all affichages
 def get_all_affichages():
     response = requests.get(MOODLE_URL)
@@ -114,6 +126,17 @@ def extract_title(affichage_html):
             return text
     return "📢 Nouvel affichage"
 
+# Extract image URLs
+def extract_images(affichage_html):
+    images = []
+    for img in affichage_html.find_all("img"):
+        src = img.get("src")
+        if src:
+            if src.startswith("/"):
+                src = "https://elearning.univ-bejaia.dz" + src
+            images.append(src)
+    return images
+
 # Startup: send today's affichages
 def send_today_affichages():
     print("📆 Checking today's affichages...")
@@ -131,7 +154,10 @@ def send_today_affichages():
             title = extract_title(item)
             raw_text = item.get_text()
             content = clean_text(raw_text, date_display)
+            images = extract_images(item)
             send_to_telegram(title, content, date_display)
+            if images:
+                send_images_to_telegram(images)
             save_sent_id(data_id)
             count += 1
 
@@ -146,7 +172,7 @@ def bot_loop():
             print("🔍 Checking...")
             affichages = get_all_affichages()
             sent_ids = load_sent_ids()
-            latest = affichages[0]  
+            latest = affichages[0]
             data_id = latest.get("data-id")
             if data_id and data_id not in sent_ids:
                 aff_date, date_display = extract_affichage_date(latest)
@@ -154,7 +180,10 @@ def bot_loop():
                     title = extract_title(latest)
                     raw_text = latest.get_text()
                     content = clean_text(raw_text, date_display)
+                    images = extract_images(latest)
                     send_to_telegram(title, content, date_display)
+                    if images:
+                        send_images_to_telegram(images)
                     save_sent_id(data_id)
                     print("🆕 New affichage detected and sent.")
                 else:
